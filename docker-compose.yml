@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # API Service (FastAPI Endpoints)
+  api:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile # Assuming Dockerfile is in ./app
+    container_name: invoice_api_service
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_HOST=redis_service # Service name for Redis host
+      - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
+    volumes: # <-- Add this volume mapping
+      - ./app:/app # Map host's ./app directory to container's /app directory
+    depends_on:
+      - redis_service # Wait for Redis to be ready
+    command: uvicorn api:app --host 0.0.0.0 --port 8000 --reload --log-level info
+
+  # Worker Service (LLM Processing)
+  worker:
+    build:
+      context: .
+      dockerfile: ./app/Dockerfile # Uses the same build context/image
+    container_name: invoice_worker_service
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_HOST=redis_service # Service name for Redis host
+      - PYTHONUNBUFFERED=1 # Ensure logs appear immediately
+    volumes: # <-- Optionally add for the worker too (restarts on manual restart/crash)
+      - ./app:/app
+    depends_on:
+      - redis_service # Wait for Redis to be ready
+    command: python -u worker.py # Run the worker script
+
+  # Redis Service (Task Queue & Status Storage)
+  redis_service:
+    image: "redis:alpine" # Use a lightweight Redis image
+    container_name: redis_db
+    # ports:
+    # - "6379:6379" # Optional: Expose Redis port externally if needed for debugging
+    volumes:
+      - redis_data:/data # Persist Redis data (optional)
+
+volumes:
+  redis_data: # Define the named volume for persistence
